@@ -1,54 +1,48 @@
-import pkgutil, importlib, inspect
+import importlib, pkgutil, inspect
 from fastapi import FastAPI
 
 PACKAGE = "autogpt_platform.backend.backend"
 
-def find_app():
-    # 1) Try common direct module first (app.py)
+def try_module(mod_name: str):
     try:
-        mod = importlib.import_module(f"{PACKAGE}.app")
-        for name in ("app", "api", "application"):
-            obj = getattr(mod, name, None)
-            if isinstance(obj, FastAPI):
-                print(f"[asgi] Found FastAPI instance: {PACKAGE}.app:{name}", flush=True)
-                return obj
-        for name in ("create_app", "get_app", "make_app", "build_app", "init_app"):
-            fn = getattr(mod, name, None)
-            if callable(fn):
+        mod = importlib.import_module(mod_name)
+    except Exception as e:
+        print(f"[asgi] import failed: {mod_name} ({e})", flush=True)
+        return None
+
+    for candidate in ("app", "api", "application"):
+        obj = getattr(mod, candidate, None)
+        if isinstance(obj, FastAPI):
+            print(f"[asgi] Found FastAPI instance: {mod_name}:{candidate}", flush=True)
+            return obj
+
+    for factory in ("create_app", "get_app", "make_app", "build_app", "init_app"):
+        fn = getattr(mod, factory, None)
+        if callable(fn):
+            try:
                 obj = fn()
                 if isinstance(obj, FastAPI):
-                    print(f"[asgi] Built FastAPI via {PACKAGE}.app:{name}()", flush=True)
+                    print(f"[asgi] Built FastAPI via {mod_name}:{factory}()", flush=True)
                     return obj
-    except Exception as e:
-        print(f"[asgi] Failed importing {PACKAGE}.app: {e}", flush=True)
+            except Exception as e:
+                print(f"[asgi] Factory failed: {mod_name}:{factory}() -> {e}", flush=True)
+    return None
 
-    # 2) Scan the whole package for any FastAPI instance or factory
+def find_app():
+    # Try most likely modules first
+    for suffix in ("app", "ws", "api", "main", "server"):
+        app = try_module(f"{PACKAGE}.{suffix}")
+        if app:
+            return app
+
+    # Scan entire package as fallback
     pkg = importlib.import_module(PACKAGE)
     for m in pkgutil.walk_packages(pkg.__path__, prefix=pkg.__name__ + "."):
-        name = m.name
-        try:
-            module = importlib.import_module(name)
+        app = try_module(m.name)
+        if app:
+            return app
 
-            # any FastAPI instance as a module attribute?
-            for attr_name, attr_val in inspect.getmembers(module):
-                if isinstance(attr_val, FastAPI):
-                    print(f"[asgi] Found FastAPI at {name}:{attr_name}", flush=True)
-                    return attr_val
-
-            # any factory function returning FastAPI?
-            for fn_name, fn in inspect.getmembers(module, inspect.isfunction):
-                if fn_name in {"create_app", "get_app", "make_app", "build_app", "init_app"}:
-                    try:
-                        built = fn()
-                        if isinstance(built, FastAPI):
-                            print(f"[asgi] Built FastAPI via {name}:{fn_name}()", flush=True)
-                            return built
-                    except Exception as e:
-                        print(f"[asgi] Factory {name}:{fn_name}() failed: {e}", flush=True)
-        except Exception as e:
-            print(f"[asgi] Skipping {name}: {e}", flush=True)
-
-    # 3) Fallback app so service stays up
+    # Last-resort fallback
     print("[asgi] No FastAPI app found; using fallback.", flush=True)
     app = FastAPI()
 
@@ -59,4 +53,5 @@ def find_app():
     return app
 
 app = find_app()
+
 
