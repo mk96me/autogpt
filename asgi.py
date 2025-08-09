@@ -3,30 +3,30 @@ from fastapi import FastAPI
 
 MODULE = "autogpt_platform.backend.backend.app"
 
-def _load_app():
+def _load():
     mod = importlib.import_module(MODULE)
 
-    # Try common attribute names first
+    # common attribute names
     for name in ("app", "api", "application"):
         obj = getattr(mod, name, None)
         if isinstance(obj, FastAPI):
             return obj
 
-    # Try common factory function names
+    # common factory functions
     for name in ("create_app", "get_app", "make_app", "build_app", "init_app"):
         fn = getattr(mod, name, None)
         if callable(fn):
-            obj = fn()
-            if isinstance(obj, FastAPI):
-                return obj
+            app = fn()
+            if isinstance(app, FastAPI):
+                return app
 
-    # Fallback minimal app so service stays live (you can add routes later)
-    fallback = FastAPI()
+    # fallback so service still comes up
+    app = FastAPI()
 
-    @fallback.get("/")
-    def _root():
-        return {"status": "ok", "note": f"Could not find FastAPI app in {MODULE}. Using fallback."}
+    @app.get("/")
+    def root():
+        return {"status": "ok", "note": f"No FastAPI app found in {MODULE}, using fallback."}
 
-    return fallback
+    return app
 
-app = _load_app()
+app = _load()
