@@ -1,6 +1,6 @@
 services:
-  - type: worker
-    name: autogpt-worker
+  - type: web
+    name: autogpt-platform
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python start.py
+    startCommand: python -m uvicorn autogpt_platform.backend.backend.app:app --host 0.0.0.0 --port $PORT
